@@ -1,0 +1,253 @@
+---
+title: "TokyoR 69 LT<BR>ggbodeパッケージを作る"
+author: "niszet"
+date: "`r format(Sys.time(),'%Y/%m/%d')`"
+output:
+  revealjs::revealjs_presentation:
+    reveal_option:
+      slideNumber: true
+      center: true
+    theme: blood
+    css: "for-revealjs_blood.css"
+pandoc_args: [
+  '--from', 'markdown+autolink_bare_uris+tex_math_single_backslash-implicit_figures'
+]
+---
+
+```{r setup, include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE, out.width = "40%", out.height = "40%")
+knitr::opts_chunk$set(echo = TRUE) 
+
+library(revealjs)
+library(ggplot2)
+library(dplyr)
+# library(tidyverse)
+library(magrittr)
+library(scales)
+library(ggbode)
+library(gridExtra)
+
+# define lpf function
+lpf <- function(freq, R, C, ppd=20) {
+  from_freq <- freq[1]
+  to_freq <- freq[2]
+  freq <- 10 ^ (seq(log10(from_freq), log10(to_freq), 1 / ppd))
+
+  w <- 2 * pi * freq
+  v <- 1 / (1i * w * C * R + 1)
+  # data.frame(list(x = freq, y = abs(v), s = atan2(Re(v), Im(v)) / pi * 180))
+  data.frame(list(x = freq, y = v))
+}
+ 
+```
+
+# 自己紹介{#self_infro}
+
+## こんな人です{#who_am_i}
+名前：niszet*  
+Rおじさん歴：2年目  
+趣味：R、楽器(お休み中)、ラズパイなど  
+![self](Figs/self.jpg)
+
+
+普段は回路設計などしています
+
+
+# ggplot2で<br>bode線図を描きたい{#bode_inggplot}
+
+## bode線図とは{#what_is_bode}
+* 周波数によって変化するゲインと位相を見るための図
+* 制御や電気電子回路の分野等で系の安定性を見るために使う。
+  * ゲイン余裕とか位相余裕とか...
+  
+## 先行事例(あまりない)
+* そもそも需要がないのでは…(?)
+  * niszetも以前やってたらしい（完全に忘れてた）
+  * ただし前処理が大量に必要で図の見栄えもイマイチ…
+
+```{r, echo=F}
+fseries <- function(min, max, perdec) {
+  expmin = floor(log10(min))
+  expmax = floor(log10(max))
+  step = 1/perdec
+  return(10^(seq(expmin,expmax,by= step)))
+}
+Hf <- function(f, R, L ,C) {
+  s = as.complex(2i*pi*f)
+  Zser = as.complex( R + s*L)
+  Zpar = as.complex(1/(s*C))
+  return(Zpar/(Zpar+Zser))
+}
+
+f = fseries(100,1e6,100) #100Hz to 1MHz, 100pts/decade
+R = 0.06; L = 1E-6; C = 47E-6
+amplitude = 20*log10(Mod(Hf(f,R,L,C))) #amplitude in dB = 2olog(|H(f)|)
+df <- data.frame(x = f, y = amplitude)
+p1 <- ggplot(df,aes(x,y)) + geom_line(lwd = 1, col = 'blue') +
+  scale_y_continuous(breaks=seq(-65,25,by = 5)) + 
+  labs(x = "f [Hz]", y = "|H(f)| [dB]") + 
+  scale_x_log10(breaks = trans_breaks("log10", function(x) 10^x),labels =     trans_format("log10", math_format(10^.x)))+
+  annotation_logticks(sides = "bt")
+
+phase = Arg(Hf(f,R,L,C))/pi*180 #phase in deg = arg(H(f))
+df <- data.frame(x = f, y = phase)
+p2 <- ggplot(df,aes(x,y)) + geom_line(lwd = 1, col = 'blue') +
+    scale_y_continuous(breaks=seq(-180,180,by = 30)) + 
+    labs(x = "f [Hz]", y = "Arg(H(f)) [deg]") + 
+    scale_x_log10(breaks = trans_breaks("log10", function(x) 10^x),labels =     trans_format("log10", math_format(10^.x)))+
+    annotation_logticks(sides = "bt")
+
+grid.arrange(p1,p2)
+```
+
+
+
+# Rの型
+
+## Rのデータ型(mode)いろいろ
+* `integer`
+* `numeric`
+* `logical`
+* `character`
+* `raw`      (以前紹介。バイナリ)
+* `complex`  (今回出てきます)
+
+## complex型 {#complex_type}
+* 複素数型。複素数は電気回路とかでよく使うらしい
+* 数字のあとにiをつけると複素数型になる（jではダメ）
+```{r}
+2i
+complex(real = 1, imaginary = 1)
+```
+* `character`の次に強い型
+
+
+## complex型の弱点{#weak_complex}
+* ネットにも書籍にも情報がほとんどない...
+
+* `ggplot2`パッケージは直接`complex`型を扱えない
+  * Re()`と`Im()`で実部と虚部を取り出して対応
+  * `plot()`は`complex`を直接扱える
+  
+* メモリをより多く使う
+```{r}
+pryr::object_size(numeric(100))
+pryr::object_size(complex(100))
+```
+
+# ggbodeへの要求仕様と<br>解決方法{#req_spec}
+
+## プロットまでの手間を減らす
+* MUST: 基本は前処理も関数内に含める
+* WANT: カスタマイズできるようにしたい
+
+
+## グラフは2つ同時に表示したい{#plot_has_2pane}
+* 以前は別々の`data.frame`を準備してた（手間）
+* `complex`型を受け取ることで1つの列で2つのy軸を作成
+* `gridExtra`パッケージでゲインと位相を同時に表示
+
+```r
+gridExtra::gtable_rbind(
+    ggplot2::ggplotGrob(g1), 
+        ggplot2::ggplotGrob(g2))
+```
+
+## 縦軸はdB（デシベル）や度数表記に{#yaxis}
+* `ggbode`内部で変換する。
+
+```r
+# 値を一旦取り出す
+v <- data[[as.character(mapping$y)]]
+
+# デシベル変換(電圧として)
+mag_db20 <- 20*log10(v)
+
+# 位相の度数表示への変換
+phase <- atan2(Im(v), Re(v)) / pi * 180
+```
+
+
+## x軸の対数表示と目盛 {#breaks}
+* `scale_x_log10()`を使う
+  * `breaks` と `minor_breaks` で主目盛と副目盛をそれぞれ作成
+* `xlim`を引数にとれるようにする。
+  * `c(6,4e3)`のような値が与えられても副目盛線を調整する
+
+
+```r
+idx <- 
+    (floor(log10(xlim[1])) - 1):
+        (ceiling(log10(xlim[2])) + 1)
+breaks_x <- 10 ^ idx
+minor_breaks_x <- 
+    rep(1:9, (idx[length(idx)]-idx[1]+1)) * 
+        (10 ^ rep(idx, each = 9))
+```
+
+
+## 目盛の見栄え調整 {#breaks_2}
+* 目盛の表示が `1E9`とか $1^9$ では見づらい
+  * `sitools`パッケージを使って `1G` のように表示させる
+
+```r
+scale_x_log10(labels = sitools::f2si)
+```
+
+* 対数の補助の目盛が欲しい
+  * 下記を追加。
+
+```r
+annotation_logticks(sides = "bt") 
+```
+
+  * 対数scale以外に使うとメモリが爆発するので注意
+  * この正体は `geom_logticks` 、つまり `layer` です。
+
+
+## 上下限を設定しなくても<br>良い感じにplotしたい {#plot_wo_lim}
+* `ggplot2` パッケージの `print.ggplot()` 内の `ggplot_build()` でプロットする範囲を求めている
+
+```r
+xlim <- ggplot2::ggplot_build(g)[["layout"]]
+             [["panel_ranges"]][[1]][["x.range"]]
+```
+
+* `ggbode` もこの結果を使っている。
+  * 本当は `print.ggbode()` を実装したい。課題。
+
+
+# 成果{#output}
+
+## プロット用のデータ作成{#prep_plot}
+* 自作の1次のLPFの周波数特性を返す関数を使用。
+```{r}
+head(lpf(c(3,6e9),1e6, 1e-12))
+```
+
+## こうじゃ！{#awesome_plot}
+```{r echo=TRUE}
+ggbode(lpf(c(3,6e9),1e6, 1e-12), aes(x=x,y=y))
+```
+
+
+# まとめ{#summary}
+
+## まとめ{#summary_sub}
+* 出来たこと
+  * bode線図をggplot2パッケージを使って描いた
+  * complex型を使った（☜ 重要）
+  * minor_breaksなどの処理を取り込んだ
+  * パッケージ化の道は遠い…
+
+* 今後の課題
+  * パッケージに必要な情報の整備
+    * DESCRIPTIONとか色々
+  * `facet`の対応が難しい…
+  * 色々な設定に対応する
+
+
+## Enjoy!!{#enjoooooy}
+![self](Figs/self.jpg)
+
+
