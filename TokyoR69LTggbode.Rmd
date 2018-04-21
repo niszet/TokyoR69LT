@@ -225,7 +225,7 @@ xlim <- ggplot2::ggplot_build(g)[["layout"]]
 head(lpf(c(3,6e9),1e6, 1e-12))
 ```
 
-## こうじゃ！{#awesome_plot}
+## えいっ{#awesome_plot}
 ```{r echo=TRUE}
 ggbode(lpf(c(3,6e9),1e6, 1e-12), aes(x=x,y=y))
 ```
