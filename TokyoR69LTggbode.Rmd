@@ -100,6 +100,28 @@ p2 <- ggplot(df,aes(x,y)) + geom_line(lwd = 1, col = 'blue') +
 grid.arrange(p1,p2)
 ```
 
+## ご参考
+* 抜粋
+```r
+amplitude = 20*log10(Mod(Hf(f,R,L,C))) #amplitude in dB = 2olog(|H(f)|)
+df <- data.frame(x = f, y = amplitude)
+p1 <- ggplot(df,aes(x,y)) + geom_line(lwd = 1, col = 'blue') +
+  scale_y_continuous(breaks=seq(-65,25,by = 5)) + 
+  labs(x = "f [Hz]", y = "|H(f)| [dB]") + 
+  scale_x_log10(breaks = trans_breaks("log10", function(x) 10^x),labels =     trans_format("log10", math_format(10^.x)))+
+  annotation_logticks(sides = "bt")
+
+phase = Arg(Hf(f,R,L,C))/pi*180 #phase in deg = arg(H(f))
+df <- data.frame(x = f, y = phase)
+p2 <- ggplot(df,aes(x,y)) + geom_line(lwd = 1, col = 'blue') +
+    scale_y_continuous(breaks=seq(-180,180,by = 30)) + 
+    labs(x = "f [Hz]", y = "Arg(H(f)) [deg]") + 
+    scale_x_log10(breaks = trans_breaks("log10", function(x) 10^x),labels =     trans_format("log10", math_format(10^.x)))+
+    annotation_logticks(sides = "bt")
+
+grid.arrange(p1,p2)
+```
+
 
 
 # Rの型
@@ -135,9 +157,9 @@ pryr::object_size(numeric(100))
 pryr::object_size(complex(100))
 ```
 
-# ggbodeへの要求仕様と<br>解決方法{#req_spec}
+# ggbodeへの要求仕様 {#req_spec}
 
-## プロットまでの手間を減らす
+## とにかく楽にプロットしたい
 * MUST: 基本は前処理も関数内に含める
 * WANT: カスタマイズできるようにしたい
 
