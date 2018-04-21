@@ -141,7 +141,20 @@ pryr::object_size(complex(100))
 * MUST: 基本は前処理も関数内に含める
 * WANT: カスタマイズできるようにしたい
 
+# 成果{#output}
 
+## プロット用のデータ作成{#prep_plot}
+* 自作の1次のLPFの周波数特性を返す関数を使用。
+```{r}
+head(lpf(c(3,6e9),1e6, 1e-12))
+```
+
+## えいっ{#awesome_plot}
+```{r echo=TRUE}
+ggbode(lpf(c(3,6e9),1e6, 1e-12), aes(x=x,y=y))
+```
+
+# 細かい話 {#details}
 ## グラフは2つ同時に表示したい{#plot_has_2pane}
 * 以前は別々の`data.frame`を準備してた（手間）
 * `complex`型を受け取ることで1つの列で2つのy軸を作成
@@ -216,19 +229,6 @@ xlim <- ggplot2::ggplot_build(g)[["layout"]]
 * `ggbode` もこの結果を使っている。
   * 本当は `print.ggbode()` を実装したい。課題。
 
-
-# 成果{#output}
-
-## プロット用のデータ作成{#prep_plot}
-* 自作の1次のLPFの周波数特性を返す関数を使用。
-```{r}
-head(lpf(c(3,6e9),1e6, 1e-12))
-```
-
-## えいっ{#awesome_plot}
-```{r echo=TRUE}
-ggbode(lpf(c(3,6e9),1e6, 1e-12), aes(x=x,y=y))
-```
 
 
 # まとめ{#summary}
